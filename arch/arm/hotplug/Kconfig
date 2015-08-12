@@ -3,3 +3,17 @@ config INTELLI_PLUG
         default y
         help
           Generic Intelli-plug cpu hotplug driver for ARM SOCs
+
+config MSM_HOTPLUG
+	bool "Enable the msm_hotplug cpu hotplug driver
+	default y
+	help
+	   R3V3NTECH's hotplug driver
+
+config MAKO_HOTPLUG
+	bool "Enable the mako_hotplug m8 implementation"
+	default y
+	help
+	   MAKO_HOTPLUG m8 implementation
+
+
