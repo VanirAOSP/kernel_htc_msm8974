@@ -32,6 +32,7 @@
 int cpufreq_register_notifier(struct notifier_block *nb, unsigned int list);
 int cpufreq_unregister_notifier(struct notifier_block *nb, unsigned int list);
 extern void disable_cpufreq(void);
+unsigned int cpufreq_quick_get_util(unsigned int cpu);
 #else		
 static inline int cpufreq_register_notifier(struct notifier_block *nb,
 						unsigned int list)

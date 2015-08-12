@@ -35,3 +35,7 @@ static int inline lcd_notifier_call_chain(unsigned long val, void *v)
 }
 #endif
 #endif /* _LINUX_LCD_NOTIFY_H */
+<<<<<<< HEAD
+=======
+
+>>>>>>> 66c0f2c... herp derp
