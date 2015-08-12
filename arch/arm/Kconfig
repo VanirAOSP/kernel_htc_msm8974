@@ -285,6 +285,12 @@ config ARM_USE_USER_ACCESSIBLE_TIMERS
 	 Enables ARM-specific user-accessible timers via a shared
 	 memory page containing the cycle counter.
 
+config MAKO_HOTPLUG
+	bool "Enables mako_hotplug from francisofranco"
+
+config MSM_HOTPLUG
+	bool "Enables msm_hotplug from R3V3NT3CH"
+
 config ARM_USER_ACCESSIBLE_TIMER_BASE
 	hex "Base address of user-accessible timer counter page"
 	default 0xfffef000
