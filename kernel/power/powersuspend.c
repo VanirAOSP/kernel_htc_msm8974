@@ -10,8 +10,6 @@
  *
  *  v1.2 - make kernel / userspace mode switchable
  *
- *  v1.3 - add a hook in display pannel driver as alternative kernel trigger
- *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -29,19 +27,9 @@
 #include <linux/workqueue.h>
 
 #define MAJOR_VERSION	1
-#define MINOR_VERSION	3
+#define MINOR_VERSION	2
 
-/*
- * debug = 1 will print all
- */
-static unsigned int debug = 1;
-module_param_named(debug_mask, debug, uint, 0644);
-
-#define dprintk(msg...)		\
-do { 				\
-	if (debug)		\
-		pr_info(msg);	\
-} while (0)
+//#define POWER_SUSPEND_DEBUG
 
 struct workqueue_struct *suspend_work_queue;
 
@@ -104,7 +92,6 @@ static void power_suspend(struct work_struct *work)
 			pos->suspend(pos);
 		}
 	}
-
 #ifdef POWER_SUSPEND_DEBUG
 	pr_warn("power_suspend: suspended.\n");
 #endif
@@ -152,15 +139,13 @@ void set_power_suspend_state(int new_state)
 
 	spin_lock_irqsave(&state_lock, irqflags);
 	old_sleep = state;
-	if (old_sleep == POWER_SUSPEND_INACTIVE &&
-		new_state == POWER_SUSPEND_ACTIVE) {
+	if (old_sleep == POWER_SUSPEND_INACTIVE && new_state == POWER_SUSPEND_ACTIVE) {
 #ifdef POWER_SUSPEND_DEBUG
 		pr_warn("power_suspend: activated.\n");
 #endif
 		state = new_state;
 		queue_work(suspend_work_queue, &power_suspend_work);
-	} else if (old_sleep == POWER_SUSPEND_INACTIVE ||
-			new_state == POWER_SUSPEND_INACTIVE) {
+	} else if (old_sleep == POWER_SUSPEND_INACTIVE || new_state == POWER_SUSPEND_INACTIVE) {
 #ifdef POWER_SUSPEND_DEBUG
 		pr_warn("power_suspend: deactivated.\n");
 #endif
@@ -170,34 +155,15 @@ void set_power_suspend_state(int new_state)
 	spin_unlock_irqrestore(&state_lock, irqflags);
 }
 
-void set_power_suspend_state_autosleep_hook(int new_state)
+void set_power_suspend_state_hook(int new_state)
 {
-#ifdef POWER_SUSPEND_DEBUG
-	pr_warn("power_suspend: autosleep resquests %s.\n",
-		new_state == POWER_SUSPEND_ACTIVE ? "sleep" : "wakeup");
-#endif
-	if (mode == POWER_SUSPEND_AUTOSLEEP)
-		// Yank555.lu: Only allow autosleep hook changes in kernel mode
-		set_power_suspend_state(new_state);
+	if (mode == POWER_SUSPEND_KERNEL)
+		set_power_suspend_state(new_state);  // Yank555.lu : Only allow kernel hook changes in kernel mode
 }
 
-EXPORT_SYMBOL(set_power_suspend_state_autosleep_hook);
+EXPORT_SYMBOL(set_power_suspend_state_hook);
 
-void set_power_suspend_state_pannel_hook(int new_state)
-{
-
-#ifdef POWER_SUSPEND_DEBUG
-	pr_warn("power_suspend: pannel resquests %s.\n",
-		new_state == POWER_SUSPEND_ACTIVE ? "sleep" : "wakeup");
-#endif
-	if (mode == POWER_SUSPEND_PANNEL)
-		// Yank555.lu : Only allow pannel hook changes in kernel mode
-		set_power_suspend_state(new_state);
-}
-
-EXPORT_SYMBOL(set_power_suspend_state_pannel_hook);
-
-/* ------------------------------------------ sysfs interface ------------------------------------------ */
+// ------------------------------------------ sysfs interface ------------------------------------------
 
 static ssize_t power_suspend_state_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -208,22 +174,17 @@ static ssize_t power_suspend_state_show(struct kobject *kobj,
 static ssize_t power_suspend_state_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
-	int new_state = 0;
+	int data = 0;
 
-	/* Yank555.lu : Only allow sysfs changes from userspace mode */
-	if (mode != POWER_SUSPEND_USERSPACE)
+	if (mode != POWER_SUSPEND_USERSPACE) // Yank555.lu : Only allow sysfs changes in userspace mode
 		return -EINVAL;
 
-	sscanf(buf, "%d\n", &new_state);
+	sscanf(buf, "%d\n", &data);
 
-#ifdef POWER_SUSPEND_DEBUG
-	pr_warn("power_suspend: userspace resquests %s.\n",
-		new_state == POWER_SUSPEND_ACTIVE ? "sleep" : "wakeup");
-#endif
-	if(new_state == POWER_SUSPEND_ACTIVE ||
-		new_state == POWER_SUSPEND_INACTIVE)
-		set_power_suspend_state(new_state);
-
+	if(data == 1 || data == 0) {
+		set_power_suspend_state(data);
+		pr_info("power suspend state requested => %d\n", data);
+	}
 	return count;
 }
 
@@ -245,19 +206,14 @@ static ssize_t power_suspend_mode_store(struct kobject *kobj,
 
 	sscanf(buf, "%d\n", &data);
 
-#if 0 /* do not allow user/app to mess with this control */
 	switch (data) {
-		case POWER_SUSPEND_AUTOSLEEP:
-		case POWER_SUSPEND_PANNEL:
-		case POWER_SUSPEND_USERSPACE:
-		mode = data;
-			return count;
+		case POWER_SUSPEND_KERNEL:
+		case POWER_SUSPEND_USERSPACE:	mode = data;
+						return count;
 		default:
 			return -EINVAL;
 	}
-#else
-	return count;
-#endif
+	
 }
 
 static struct kobj_attribute power_suspend_mode_attribute =
@@ -291,7 +247,7 @@ static struct attribute_group power_suspend_attr_group =
 
 static struct kobject *power_suspend_kobj;
 
-/* ------------------ sysfs interface ----------------------- */
+// ------------------------------------------ sysfs interface ------------------------------------------
 
 static int __init power_suspend_init(void)
 {
@@ -320,8 +276,7 @@ static int __init power_suspend_init(void)
 		return -ENOMEM;
 	}
 
-	// Yank555.lu : Default to autosleep mode;
-	mode = POWER_SUSPEND_AUTOSLEEP;
+	mode = POWER_SUSPEND_KERNEL; // Yank555.lu : Default to kernel mode
 
 	return 0;
 }
@@ -332,7 +287,7 @@ static void __exit power_suspend_exit(void)
 		kobject_put(power_suspend_kobj);
 
 	destroy_workqueue(suspend_work_queue);
-}
+} 
 
 core_initcall(power_suspend_init);
 module_exit(power_suspend_exit);
@@ -341,3 +296,5 @@ MODULE_AUTHOR("Paul Reioux <reioux@gmail.com> / Jean-Pierre Rasquin <yank555.lu@
 MODULE_DESCRIPTION("power_suspend - A replacement kernel PM driver for"
         "Android's deprecated early_suspend/late_resume PM driver!");
 MODULE_LICENSE("GPL v2");
+
+
