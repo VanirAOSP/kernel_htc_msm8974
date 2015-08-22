@@ -37,7 +37,6 @@ struct cpu_sync {
 	int src_cpu;
 	unsigned int boost_min;
 	unsigned int input_boost_min;
-	unsigned int task_load;
 	unsigned int input_boost_freq;
 };
 
@@ -46,10 +45,6 @@ static DEFINE_PER_CPU(struct task_struct *, thread);
 static struct workqueue_struct *cpu_boost_wq;
 
 static struct work_struct input_boost_work;
-
-static unsigned int cpu_boost = 1;
-module_param(cpu_boost, uint, 0644);
-
 
 static struct notifier_block notif;
 
@@ -65,15 +60,8 @@ static bool suspended;
 static unsigned int input_boost_ms = 40;
 module_param(input_boost_ms, uint, 0644);
 
-static unsigned int migration_load_threshold = 30;
-module_param(migration_load_threshold, uint, 0644);
-
-static bool load_based_syncs = 1;
-module_param(load_based_syncs, bool, 0644);
-
 static bool hotplug_boost = 1;
 module_param(hotplug_boost, bool, 0644);
-
 
 bool wakeup_boost;
 module_param(wakeup_boost, bool, 0644);
@@ -246,7 +234,6 @@ static void run_boost_migration(unsigned int cpu)
 	struct cpufreq_policy dest_policy;
 	struct cpufreq_policy src_policy;
 	unsigned long flags;
-	unsigned int req_freq;
 
 	spin_lock_irqsave(&s->lock, flags);
 	s->pending = false;
@@ -261,21 +248,17 @@ static void run_boost_migration(unsigned int cpu)
 	if (ret)
 		return;
 
-	req_freq = load_based_syncs ?
-		(dest_policy.max * s->task_load) / 100 :
-						src_policy.cur;
-
-	if (req_freq <= dest_policy.cpuinfo.min_freq) {
-			pr_debug("No sync. Sync Freq:%u\n", req_freq);
+	if (src_policy.min == src_policy.cpuinfo.min_freq) {
+		pr_debug("No sync. Source CPU%d@%dKHz at min freq\n",
+				src_cpu, src_policy.cur);
 		return;
 	}
 
-	if (sync_threshold)
-		req_freq = min(sync_threshold, req_freq);
-
 	cancel_delayed_work_sync(&s->boost_rem);
-
-	s->boost_min = req_freq;
+	if (sync_threshold)
+		s->boost_min = min(sync_threshold, src_policy.cur);
+	else
+		s->boost_min = src_policy.cur;
 
 	/* Force policy re-evaluation to trigger adjust notifier. */
 	get_online_cpus();
@@ -327,21 +310,12 @@ static struct smp_hotplug_thread cpuboost_threads = {
 };
 
 static int boost_migration_notify(struct notifier_block *nb,
-				unsigned long unused, void *arg)
+				unsigned long dest_cpu, void *arg)
 {
-	struct migration_notify_data *mnd = arg;
 	unsigned long flags;
-	struct cpu_sync *s = &per_cpu(sync_info, mnd->dest_cpu);
+	struct cpu_sync *s = &per_cpu(sync_info, dest_cpu);
 
-	if (load_based_syncs && (mnd->load <= migration_load_threshold))
-		return NOTIFY_OK;
-
-	if (load_based_syncs && ((mnd->load < 0) || (mnd->load > 100))) {
-		pr_err("cpu-boost:Invalid load: %d\n", mnd->load);
-		return NOTIFY_OK;
-	}
-
-	if (!load_based_syncs && (mnd->src_cpu == mnd->dest_cpu))
+	if (suspended)
 		return NOTIFY_OK;
 
 	if (!boost_ms)
@@ -351,11 +325,10 @@ static int boost_migration_notify(struct notifier_block *nb,
 	if (thread == current)
 		return NOTIFY_OK;
 
-	pr_debug("Migration: CPU%d --> CPU%d\n", mnd->src_cpu, mnd->dest_cpu);
+	pr_debug("Migration: CPU%d --> CPU%d\n", (int) arg, (int) dest_cpu);
 	spin_lock_irqsave(&s->lock, flags);
 	s->pending = true;
-	s->src_cpu = mnd->src_cpu;
-	s->task_load = load_based_syncs ? mnd->load : 0;
+	s->src_cpu = (int) arg;
 	spin_unlock_irqrestore(&s->lock, flags);
 
 	return NOTIFY_OK;
@@ -391,11 +364,9 @@ static void cpuboost_input_event(struct input_handle *handle,
 {
 	u64 now;
 	unsigned int min_interval;
-	
-	if (!cpu_boost)
-		return;
 
-	if (!input_boost_enabled || work_pending(&input_boost_work))
+	if (suspended || !input_boost_enabled ||
+		work_pending(&input_boost_work))
 		return;
 
 	now = ktime_to_us(ktime_get());
@@ -492,7 +463,7 @@ static int cpuboost_cpu_callback(struct notifier_block *cpu_nb,
 	case CPU_UP_CANCELED:
 		break;
 	case CPU_ONLINE:
-		if (!hotplug_boost || !input_boost_enabled ||
+		if (suspended || !hotplug_boost || !input_boost_enabled ||
 		     work_pending(&input_boost_work))
 			break;
 		pr_debug("Hotplug boost for CPU%d\n", (int)hcpu);
@@ -524,20 +495,15 @@ static int state_notifier_callback(struct notifier_block *this,
 				unsigned long event, void *data)
 {
 	switch (event) {
-	case LCD_EVENT_ON_START:
-	case LCD_EVENT_OFF_END:
-	case LCD_EVENT_OFF_START:
-		break;
-	case LCD_EVENT_ON_END:
-		if (!wakeup_boost || !input_boost_enabled ||
-		     work_pending(&input_boost_work))
+		case STATE_NOTIFIER_ACTIVE:
+			suspended = false;
+			__wakeup_boost();
 			break;
-		pr_debug("Wakeup boost for LCD on event.\n");
-		queue_work(cpu_boost_wq, &input_boost_work);
-		last_input_time = ktime_to_us(ktime_get());
-		break;
-	default:
-		break;
+		case STATE_NOTIFIER_SUSPEND:
+			suspended = true;
+			break;
+		default:
+			break;
 	}
 
 	return NOTIFY_OK;
