@@ -3237,3 +3237,10 @@ config HTC_DEBUG_RBCPR_8226
 	depends on ARCH_MSM8226
 	default n
 	bool "HTC RBCPR debug"
+
+config MSM_LIMITER
+	bool "MSM Frequency Limiter Driver"
+	default y
+	help
+		The MSM Frequency Limiter driver controls max frequency limit for each CPU
+		to desired value on suspend/resume
