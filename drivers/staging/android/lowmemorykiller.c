@@ -29,10 +29,22 @@
  * GNU General Public License for more details.
  *
  */
-#include <linux/module.h> include <linux/kernel.h> include <linux/mm.h> include <linux/oom.h> include 
-#<linux/sched.h> include <linux/rcupdate.h> include <linux/notifier.h> include <linux/mutex.h> include 
-#<linux/delay.h> include <linux/swap.h> include <linux/fs.h> ifdef CONFIG_HIGHMEM define _ZONE ZONE_HIGHMEM 
-#else define _ZONE ZONE_NORMAL endif
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/mm.h>
+#include <linux/oom.h>
+#include <linux/sched.h>
+#include <linux/rcupdate.h>
+#include <linux/notifier.h>
+#include <linux/mutex.h>
+#include <linux/delay.h>
+#include <linux/swap.h>
+#include <linux/fs.h>
+#ifdef CONFIG_HIGHMEM
+#define _ZONE ZONE_HIGHMEM
+#else
+#define _ZONE ZONE_NORMAL
+#endif
 static uint32_t lowmem_debug_level = 1; static int lowmem_adj[6] = {
 	0,
 	1,
@@ -85,8 +97,9 @@ static int test_task_flag(struct task_struct *p, int flag) {
 	return 0;
 }
 #ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
-static struct task_struct *pick_next_from_adj_tree(struct task_struct *task); static struct task_struct 
-*pick_first_task(void); static struct task_struct *pick_last_task(void);
+static struct task_struct *pick_next_from_adj_tree(struct task_struct *task); 
+static struct task_struct *pick_first_task(void); 
+static struct task_struct *pick_last_task(void);
 #endif
 static DEFINE_MUTEX(scan_mutex); int can_use_cma_pages(gfp_t gfp_mask) {
 	int can_use = 0;
@@ -401,14 +414,15 @@ static const struct kparam_array __param_arr_adj = {
 	.elemsize = sizeof(lowmem_adj[0]),
 	.elem = lowmem_adj,
 };
-#endif ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+#endif 
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
 DEFINE_SPINLOCK(lmk_lock); struct rb_root tasks_scoreadj = RB_ROOT; void add_2_adj_tree(struct task_struct 
 *task) {
 	struct rb_node **link = &tasks_scoreadj.rb_node;
 	struct rb_node *parent = NULL;
 	struct task_struct *task_entry;
 	s64 key = task->signal->oom_score_adj;
-	/*
+/*
  * * Find the right place in the rbtree:
  * */
 	spin_lock(&lmk_lock);
