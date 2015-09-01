@@ -18,8 +18,6 @@
 #include <linux/pagevec.h>
 #include <linux/pagemap.h>
 
-#include <trace/events/mmcio.h>
-
 unsigned long max_readahead_pages = VM_MAX_READAHEAD * 1024 / PAGE_CACHE_SIZE;
 
 static int __init readahead(char *str)
@@ -231,7 +229,6 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	 * will then handle the error.
 	 */
 	if (ret) {
-		trace_readahead(filp, ret);
 		read_pages(mapping, filp, &page_pool, ret);
 	}
 	BUG_ON(!list_empty(&page_pool));
